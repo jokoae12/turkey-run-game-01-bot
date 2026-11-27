@@ -49,7 +49,25 @@ export const FARMER = {
   dashPushbackPerSecond: 0.03,
   /** Below this the farmer is off-screen; at 1 he grabs the turkey. */
   visibleAt: 0.25,
+  /** Search: when the turkey hides while the farmer is this close or closer,
+   *  he stops, looks around, then pokes the haystack. If the turkey is still
+   *  inside when the poke lands, it is found: no life lost, but he gains a
+   *  lot of ground. Hiding while he is far away stays safe. */
+  searchSeconds: 1.15,
+  searchFindAt: 0.7,
+  foundGain: 0.3,
+  /** Cut-off: at each stage boundary he shouts, runs around and charges in
+   *  from the front. The warning is long on purpose — jump over him. */
+  cornerWarnSeconds: 1.2,
+  cornerSpeed: 300,
+  cornerHeight: 120,
+  cornerDodgeBonus: 15,
+  /** The finale: from 1300 m he sprints, so the threat creeps faster. */
+  finaleCreep: 2.2,
 };
+
+/** The finale starts here: the last 200 m are "The Great Escape". */
+export const FINALE_METRES = 1300;
 
 export const STAGES = [
   {
@@ -66,7 +84,7 @@ export const STAGES = [
     fromMetres: 500,
     toMetres: 1000,
     spawnInterval: 1.3,
-    groundTypes: ['haybale', 'pitchfork', 'chicken', 'haystack', 'mud'],
+    groundTypes: ['haybale', 'pitchfork', 'chicken', 'haystack', 'mud', 'roller'],
     airTypes: [],
     cornInterval: 1.5,
   },
@@ -75,7 +93,7 @@ export const STAGES = [
     fromMetres: 1000,
     toMetres: 1500,
     spawnInterval: 1.2,
-    groundTypes: ['oven', 'pan', 'haystack'],
+    groundTypes: ['oven', 'pan', 'haystack', 'roller', 'mud'],
     airTypes: ['knife'],
     cornInterval: 1.4,
   },
@@ -90,6 +108,11 @@ export const OBSTACLES = {
   haybale: { w: 78, h: 58, kind: 'jump' },
   pitchfork: { w: 40, h: 96, kind: 'jump' },
   chicken: { w: 52, h: 44, kind: 'jump', runs: true },
+  /** A pumpkin that rolls AT the turkey: it closes faster than the scroll. */
+  roller: { w: 58, h: 54, kind: 'jump', rolls: true, chases: true },
+  /** A carving knife dropped from above in the finale: it warns with a
+   *  shadow on the ground, falls fast, then sticks there, jumpable. */
+  fallingKnife: { w: 30, h: 110, kind: 'jump' },
   oven: { w: 120, h: 118, kind: 'jump' },
   pan: { w: 84, h: 30, kind: 'jump', flat: true },
   knife: { w: 34, h: 520, kind: 'duck', hangs: true },
@@ -105,6 +128,7 @@ export const SCORE = {
   perMetre: 2,
   dodge: 5,
   hideBonus: 15,
+  cornerDodge: 15,
 };
 
 /** How many obstacles, pickups and particles can exist at once; pools are allocated once, at boot. */

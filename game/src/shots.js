@@ -19,6 +19,9 @@ function nearestAhead(state, maxDistance) {
   let nearest = null;
   for (const item of state.obstacles) {
     if (!item.active) continue;
+    // A falling knife still warning is no threat yet: it hangs above the
+    // screen and only matters once it drops or sticks.
+    if (item.type === 'fallingKnife' && item.knifePhase === 'warn') continue;
     const dx = item.x - PLAYER.x;
     if (dx < -20 || dx > maxDistance) continue;
     if (!nearest || item.x < nearest.x) nearest = item;
@@ -41,23 +44,56 @@ function nearestOfType(state, type, minX, maxX) {
 export function autopilot(state, careless) {
   const control = { jump: false, slide: false, dash: false, speedAdjust: 0 };
   const player = state.player;
+  // The farmer's cut-off charge: jump over him as he closes in.
+  if (!careless && state.farmerMode === 'corner') {
+    const dx = state.farmerX - PLAYER.x;
+    if (dx < 260 && dx > -40 && player.onGround) control.jump = true;
+    return control;
+  }
+  // A dropping knife outranks a hanging one: jump it (the same jump clears
+  // a hanging knife), and never slide while one is coming down — sliding
+  // under a hanging knife is exactly how a falling knife catches the turkey.
+  let knifeNear = null;
+  if (!careless) {
+    for (const item of state.obstacles) {
+      if (!item.active || item.type !== 'fallingKnife' || item.knifePhase === 'warn') continue;
+      const dx = item.x - PLAYER.x;
+      if (dx >= -20 && dx <= 320 && (!knifeNear || item.x < knifeNear.x)) knifeNear = item;
+    }
+  }
   const obstacle = nearestAhead(state, careless ? 200 : 520);
   if (obstacle) {
     const dx = obstacle.x - PLAYER.x;
-    // A jump covers about 0.62 s of travel; jump late enough to still be
+    // A jump covers about 0.55 s of travel; jump late enough to still be
     // airborne when the obstacle arrives, early enough to clear it.
-    const closing = state.speed + (obstacle.type === 'chicken' ? 130 : 0);
-    const jumpAt = careless ? 60 : closing * 0.62;
+    const closing = state.speed + (obstacle.type === 'chicken' ? 130 : 0) + (obstacle.type === 'roller' ? 85 : 0);
+    // Jump when the obstacle is ~0.55 s out: the overlap window then falls
+    // inside the jump arc, so one well-timed jump clears it — no double
+    // jump needed. (0.62 s used to land the turkey right on fast closers.)
+    // A falling knife is jumped late: it drops onto the turkey's spot, so
+    // jumping early lands the turkey right on the stuck blade.
+    const jumpAt = careless ? 60 : obstacle.type === 'fallingKnife' ? 190 : closing * 0.55;
     if (obstacle.kind === 'duck') {
-      if (!careless && dx < 300 && player.onGround) control.slide = true;
+      if (!careless && knifeNear && dx < 260 && player.onGround) control.jump = true;
+      else if (!careless && !knifeNear && dx < 300 && player.onGround) control.slide = true;
     } else if (dx < jumpAt) {
       if (player.onGround) control.jump = true;
       else if (!careless && player.jumpsUsed === 1 && dx < 190 && player.vy > -100) {
         control.jump = true;
       }
     }
-    if (obstacle.type === 'haystack' && state.farmer > 0.5 && dx < 200 && player.onGround) control.slide = true;
-  } else if (!careless && player.stamina > 50) {
+    // Hide only while the farmer is far enough not to search the haystack:
+    // hiding when he is close gets the turkey found and dragged out.
+    if (obstacle.type === 'haystack' && state.farmer > 0.5 && state.farmer < 0.68 && dx < 200 && player.onGround) control.slide = true;
+  }
+  if (knifeNear) {
+    const dx = knifeNear.x - PLAYER.x;
+    if (dx < 260) {
+      if (player.onGround) control.jump = true;
+      else if (player.jumpsUsed === 1 && player.vy > -100) control.jump = true;
+    }
+  }
+  if (!obstacle && !careless && player.stamina > 50) {
     control.dash = true;
     control.speedAdjust = 1;
   }

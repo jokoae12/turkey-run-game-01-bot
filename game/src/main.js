@@ -11,7 +11,8 @@ import { createRandom } from './random.js';
 import { createAudio } from './audio.js';
 import {
   createWorld, EVENT_CORN, EVENT_DASH, EVENT_DOUBLE_JUMP, EVENT_FEATHER,
-  EVENT_HIDE, EVENT_HIT, EVENT_JUMP, EVENT_OVER, EVENT_PIE, EVENT_WIN,
+  EVENT_FINALE, EVENT_FOUND, EVENT_HIDE, EVENT_HIT, EVENT_JUMP, EVENT_KNIFE,
+  EVENT_OVER, EVENT_PIE, EVENT_SHOUT, EVENT_WIN,
 } from './world.js';
 import {
   ACTION_CONFIRM, ACTION_JUMP, ACTION_MUTE, ACTION_PAUSE, createInput,
@@ -118,6 +119,10 @@ function runGame() {
     if (events & EVENT_PIE) audio.pickup();
     if (events & EVENT_HIDE) audio.hide();
     if (events & EVENT_DASH) audio.dash();
+    if (events & EVENT_FOUND) audio.shout();
+    if (events & EVENT_SHOUT) audio.shout();
+    if (events & EVENT_KNIFE) audio.whistle();
+    if (events & EVENT_FINALE) audio.sting();
     if (events & EVENT_HIT) {
       audio.hit();
       audio.gobble();
@@ -167,6 +172,7 @@ function runGame() {
     };
     pendingJump = false;
     const events = world.step(STEP, control, false);
+    audio.setStage(world.state.stageIndex, world.state.finale);
     playEvents(events);
     if (events & EVENT_OVER) endGame(Boolean(events & EVENT_WIN));
   }

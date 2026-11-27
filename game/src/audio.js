@@ -12,7 +12,11 @@ export function createAudio() {
   // A cheerful little loop in C major, one note per beat, with a low root underneath.
   const MELODY = [523, 659, 784, 659, 880, 784, 659, 523, 587, 659, 784, 880, 784, 659, 587, 523];
   const BASS = [131, 131, 175, 131, 196, 175, 131, 131, 147, 131, 175, 196, 175, 131, 147, 131];
-  const BEAT_SECONDS = 0.24;
+  // The loop quickens every stage — and again in the finale — so the music
+  // itself tells the player the chase is heating up.
+  const BEAT_SECONDS = [0.24, 0.22, 0.2];
+  const FINALE_BEAT_SECONDS = 0.18;
+  let beatSeconds = BEAT_SECONDS[0];
 
   function ensure() {
     if (context) {
@@ -77,7 +81,7 @@ export function createAudio() {
       const step = beatIndex % MELODY.length;
       tone(MELODY[step], 0.2, 'triangle', 0.05, nextBeat);
       if (step % 2 === 0) tone(BASS[step], 0.22, 'sine', 0.07, nextBeat);
-      nextBeat += BEAT_SECONDS;
+      nextBeat += beatSeconds;
       beatIndex += 1;
     }
   }
@@ -100,6 +104,10 @@ export function createAudio() {
       nextBeat = audio.currentTime + 0.05;
       beatIndex = 0;
       musicTimer = window.setInterval(scheduleBeat, 120);
+    },
+    /** Quicken the loop as the stages (and the finale) heat up. */
+    setStage(stageIndex, finale) {
+      beatSeconds = finale ? FINALE_BEAT_SECONDS : BEAT_SECONDS[Math.min(stageIndex, BEAT_SECONDS.length - 1)];
     },
     stopMusic() {
       if (musicTimer) {
@@ -144,6 +152,26 @@ export function createAudio() {
       for (let i = 0; i < 3; i += 1) {
         tone(180, 0.09, 'square', 0.07, now + i * 0.11, 120);
       }
+    },
+    /** The farmer spots the turkey and shouts "THERE!" — two angry barks. */
+    shout() {
+      const audio = ensure();
+      if (!audio || muted) return;
+      const now = audio.currentTime;
+      tone(220, 0.14, 'square', 0.12, now, 140);
+      tone(262, 0.18, 'square', 0.12, now + 0.16, 180);
+      noise(0.12, 0.06, now + 0.02, 1200);
+    },
+    /** A falling knife whistles down: a high slide that drops fast. */
+    whistle() {
+      tone(1900, 0.45, 'sine', 0.09, undefined, 320);
+    },
+    /** The finale begins: three rising notes, a call to run. */
+    sting() {
+      const audio = ensure();
+      if (!audio || muted) return;
+      const now = audio.currentTime;
+      [392, 523, 784].forEach((freq, i) => tone(freq, 0.16, 'triangle', 0.14, now + i * 0.11));
     },
     caught() {
       tone(392, 0.22, 'sawtooth', 0.16, undefined, 370);
