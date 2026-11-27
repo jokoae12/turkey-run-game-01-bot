@@ -1,9 +1,9 @@
 // Every tuning number, stage and colour of Feast or Flight lives here, so the
 // rest of the game never hard-codes a speed, a size or a colour. The playfield
-// is a fixed 1280x720 logical area; the renderer scales it to the window, so
+// is a fixed 1280x800 logical area; the renderer scales it to the window, so
 // no rule below depends on the screen size.
 
-export const FIELD = { width: 1280, height: 720, groundY: 600 };
+export const FIELD = { width: 1280, height: 800, groundY: 600 };
 
 /** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
 export const STEP = 1 / 60;
@@ -22,13 +22,13 @@ export const PLAYER = {
   gravity: 2600,
   jumpSpeed: 980,
   doubleJumpSpeed: 860,
-  invulnerable: 1.6,
+  invulnerable: 1.4,
   hideSeconds: 1.6,
 };
 
 export const RUN = {
   baseSpeed: 300,
-  speedPerStage: 55,
+  speedPerStage: 58,
   maxSpeed: 560,
   minSpeed: 190,
   speedStep: 70,
@@ -43,8 +43,8 @@ export const LIVES = 3;
 export const FARMER = {
   /** Threat gained on every hit, and the slow creep while the farmer hunts. */
   hitGain: 0.18,
-  creepPerSecond: 0.003,
-  cornPushback: 0.06,
+  creepPerSecond: 0.0045,
+  cornPushback: 0.05,
   hideDrop: 0.45,
   dashPushbackPerSecond: 0.03,
   /** Below this the farmer is off-screen; at 1 he grabs the turkey. */
@@ -65,7 +65,7 @@ export const STAGES = [
     name: 'BARN',
     fromMetres: 500,
     toMetres: 1000,
-    spawnInterval: 1.4,
+    spawnInterval: 1.3,
     groundTypes: ['haybale', 'pitchfork', 'chicken', 'haystack', 'mud'],
     airTypes: [],
     cornInterval: 1.5,
