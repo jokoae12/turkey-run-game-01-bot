@@ -47,7 +47,7 @@ export function createWorld(random) {
   const state = {
     player, obstacles, pickups, particles,
     distance: 0, score: 0, bonus: 0, lives: LIVES, stageIndex: 0,
-    time: 0, spawnTimer: 1.0, cornTimer: 1.2, featherTimer: 22,
+    time: 0, spawnTimer: 1.0, cornTimer: 1.2, featherTimer: 30,
     farmer: 0.12, speed: RUN.baseSpeed, inMud: false,
     over: false, won: false, cause: '', runTime: 0,
   };
@@ -75,7 +75,7 @@ export function createWorld(random) {
     state.time = 0;
     state.spawnTimer = 1.0;
     state.cornTimer = 1.2;
-    state.featherTimer = 22;
+    state.featherTimer = 30;
     state.farmer = 0.12;
     state.speed = RUN.baseSpeed;
     state.inMud = false;
@@ -148,7 +148,9 @@ export function createWorld(random) {
 
   function spawnPickupRow() {
     const roll = random();
-    const type = roll < 0.78 ? 'corn' : roll < 0.9 ? 'feather' : 'pie';
+    // Golden feathers are rare on purpose: a +1 life every dozen seconds
+    // would refill every hit, so most rows are corn or a shield pie.
+    const type = roll < 0.85 ? 'corn' : roll < 0.9 ? 'feather' : 'pie';
     const def = PICKUPS[type];
     const count = type === 'corn' ? 3 + Math.floor(random() * 3) : 1;
     // Corn rows arc over a jump; feather and pie float high, worth the leap.
@@ -277,7 +279,7 @@ export function createWorld(random) {
         item.y = FIELD.groundY - 200;
         item.bob = 0;
       }
-      state.featherTimer = 20 + random() * 12;
+      state.featherTimer = 28 + random() * 14;
     }
 
     // --- move the world left past the turkey.

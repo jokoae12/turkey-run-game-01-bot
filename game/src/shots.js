@@ -36,8 +36,9 @@ function nearestOfType(state, type, minX, maxX) {
 /**
  * Steer one step. `careless` plays like a hurried player: it reacts late,
  * never double-jumps, never dashes and never slides — so it gets caught.
+ * Exported so the Node logic test drives the exact same pilot the shots use.
  */
-function autopilot(state, careless) {
+export function autopilot(state, careless) {
   const control = { jump: false, slide: false, dash: false, speedAdjust: 0 };
   const player = state.player;
   const obstacle = nearestAhead(state, careless ? 200 : 520);
@@ -101,6 +102,9 @@ export function stageShot(name, world) {
       if (!nearestOfType(world.state, 'knife', 400, 1250)) world.spawnObstacle('knife', 1140);
       runAutopilot(world, 0.6, false);
     }
+    // Frame the farmer whole at the left edge: a good run pushes him far
+    // back, which used to leave him sliced by the frame in this shot.
+    if (!world.state.over) world.state.farmer = Math.max(world.state.farmer, 0.55);
     return { screen: world.state.over ? (world.state.won ? SCREEN_WIN : SCREEN_OVER) : SCREEN_PLAY, best: world.state.score };
   }
   // Play: a mid-run farmyard frame with the farmer breathing down the turkey's neck.

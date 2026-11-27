@@ -1,5 +1,5 @@
 // Drawing only: the world's state and the current screen in, pixels out. The
-// 1280x720 playfield is scaled to fit the window and centred, the margin
+// 1280x800 playfield is scaled to fit the window and centred, the margin
 // filled with the backdrop colour. Everything is drawn from flat shapes: a
 // running turkey, the chasing farmer, farmyard-to-kitchen parallax, the
 // obstacles and pickups, the HUD and the screens. Text that holds a number is
@@ -14,7 +14,7 @@ export const SCREEN_WIN = 'win';
 
 /** Menu buttons, in playfield coordinates; main.js hit-tests taps against them. */
 export const BUTTONS = {
-  start: { x: 470, y: 508, w: 340, h: 66 },
+  start: { x: 470, y: 548, w: 340, h: 66 },
   restart: { x: 470, y: 512, w: 340, h: 66 },
   resume: { x: 470, y: 440, w: 340, h: 66 },
 };
@@ -148,6 +148,53 @@ export function createRenderer(canvas) {
         context.ellipse(x - 46, y + 8, 46, 16, 0, 0, Math.PI * 2);
         context.fill();
       }
+      // Birds cross the sky on a slow parallax, wings flapping with time.
+      context.strokeStyle = 'rgba(90, 60, 40, 0.8)';
+      context.lineWidth = 3;
+      context.lineCap = 'round';
+      for (let i = 0; i < 4; i += 1) {
+        const worldX = i * 900 + hash(i + 21) * 420;
+        const x = (((worldX - state.distance * 0.08) % 2100) + 2100) % 2100 - 180;
+        const y = 90 + hash(i + 63) * 130;
+        const flap = Math.sin(state.time * 6 + i * 2.1) * 7;
+        context.beginPath();
+        context.moveTo(x - 14, y - flap);
+        context.quadraticCurveTo(x - 5, y + 3, x, y);
+        context.quadraticCurveTo(x + 5, y + 3, x + 14, y - flap);
+        context.stroke();
+      }
+      // A distant windmill turns on the far hill, filling the mid-sky.
+      const millX = (((2600 - state.distance * 0.45) % 2400) + 2400) % 2400 - 260;
+      const millBase = FIELD.groundY - 118;
+      context.fillStyle = '#8a6a45';
+      context.beginPath();
+      context.moveTo(millX - 22, millBase);
+      context.lineTo(millX - 12, millBase - 120);
+      context.lineTo(millX + 12, millBase - 120);
+      context.lineTo(millX + 22, millBase);
+      context.closePath();
+      context.fill();
+      context.fillStyle = '#6e2a1e';
+      context.beginPath();
+      context.moveTo(millX - 14, millBase - 118);
+      context.lineTo(millX, millBase - 138);
+      context.lineTo(millX + 14, millBase - 118);
+      context.closePath();
+      context.fill();
+      const bladeAngle = state.time * 0.7;
+      context.strokeStyle = '#f6e8c8';
+      context.lineWidth = 5;
+      for (let b = 0; b < 4; b += 1) {
+        const a = bladeAngle + b * Math.PI / 2;
+        context.beginPath();
+        context.moveTo(millX, millBase - 128);
+        context.lineTo(millX + Math.cos(a) * 52, millBase - 128 + Math.sin(a) * 52);
+        context.stroke();
+      }
+      context.fillStyle = '#5d4037';
+      context.beginPath();
+      context.arc(millX, millBase - 128, 6, 0, Math.PI * 2);
+      context.fill();
       // Far and near hills.
       context.fillStyle = PALETTE.hillFar;
       context.beginPath();
@@ -234,9 +281,42 @@ export function createRenderer(canvas) {
         context.fill();
         context.fillRect(720 + i * 90, 138, 40, 12);
       }
-      context.fillStyle = '#ff9a3c';
+      // A pendant lamp hangs over the kitchen: cord, metal shade, warm bulb
+      // and a soft cone of light down to the counter — never a bare oval.
+      context.strokeStyle = '#2c1a10';
+      context.lineWidth = 4;
       context.beginPath();
-      context.ellipse(1140, 120, 60, 14, 0, 0, Math.PI * 2);
+      context.moveTo(1140, 0);
+      context.lineTo(1140, 62);
+      context.stroke();
+      const lampGlow = context.createRadialGradient(1140, 108, 4, 1140, 108, 90);
+      lampGlow.addColorStop(0, 'rgba(255, 190, 90, 0.55)');
+      lampGlow.addColorStop(1, 'rgba(255, 190, 90, 0)');
+      context.fillStyle = lampGlow;
+      context.beginPath();
+      context.arc(1140, 108, 90, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = 'rgba(255, 190, 90, 0.10)';
+      context.beginPath();
+      context.moveTo(1104, 112);
+      context.lineTo(1176, 112);
+      context.lineTo(1240, 330);
+      context.lineTo(1040, 330);
+      context.closePath();
+      context.fill();
+      context.fillStyle = '#3d5a3a';
+      context.beginPath();
+      context.moveTo(1116, 62);
+      context.lineTo(1164, 62);
+      context.lineTo(1180, 104);
+      context.lineTo(1100, 104);
+      context.closePath();
+      context.fill();
+      context.fillStyle = '#2c4630';
+      context.fillRect(1100, 100, 80, 6);
+      context.fillStyle = '#ffe9a8';
+      context.beginPath();
+      context.arc(1140, 114, 12, 0, Math.PI * 2);
       context.fill();
     }
 
@@ -257,6 +337,29 @@ export function createRenderer(canvas) {
       }
       context.fillRect(0, FIELD.groundY - 46, FIELD.width, 6);
       context.fillRect(0, FIELD.groundY - 28, FIELD.width, 6);
+      // Scattered pebbles and grass tufts keep the taller ground strip alive.
+      for (let i = 0; i < 16; i += 1) {
+        const worldX = i * 260 + hash(i + 77) * 180;
+        const x = (((worldX - state.distance) % 2600) + 2600) % 2600 - 200;
+        const y = FIELD.groundY + 30 + hash(i + 31) * 130;
+        if (i % 2 === 0) {
+          context.fillStyle = 'rgba(120, 78, 38, 0.55)';
+          context.beginPath();
+          context.ellipse(x, y, 7, 4, 0, 0, Math.PI * 2);
+          context.fill();
+        } else {
+          context.strokeStyle = 'rgba(94, 122, 52, 0.8)';
+          context.lineWidth = 2;
+          context.beginPath();
+          context.moveTo(x - 5, y);
+          context.lineTo(x - 7, y - 9);
+          context.moveTo(x, y);
+          context.lineTo(x, y - 11);
+          context.moveTo(x + 5, y);
+          context.lineTo(x + 7, y - 9);
+          context.stroke();
+        }
+      }
     } else {
       context.fillStyle = '#4a2c1a';
       context.fillRect(0, FIELD.groundY, FIELD.width, FIELD.height - FIELD.groundY);
@@ -375,8 +478,9 @@ export function createRenderer(canvas) {
   /** The farmer, chasing from the left; the closer the threat, the closer he is. */
   function drawFarmer(state) {
     const threat = state.farmer;
-    const x = PLAYER.x - 330 + threat * 265;
-    if (x < -140) return;
+    // Clamped to the left edge so the farmer is always drawn whole, never
+    // sliced by the frame — at low threat he lurks at the edge, watching.
+    const x = Math.max(0, PLAYER.x - 330 + threat * 265);
     const feet = FIELD.groundY;
     const phase = state.time * 16;
     const legSwing = Math.sin(phase) * 13;
@@ -519,7 +623,15 @@ export function createRenderer(canvas) {
       text('MUD!', x + w / 2, y - 8, 18, '#e8c9a0', 'center', 'bold');
     } else if (item.type === 'haystack') {
       drawHaystack(x, y, w, h);
-      text('HIDE!  ↓', x + w / 2, y - 10, 18, '#ffe9a8', 'center', 'bold');
+      // The hide cue is text plus a drawn arrow — no font glyph to go missing.
+      text('HIDE!', x + w / 2, y - 14, 20, '#ffe9a8', 'center', 'bold');
+      context.fillStyle = '#ffe9a8';
+      context.beginPath();
+      context.moveTo(x + w / 2 - 9, y - 8);
+      context.lineTo(x + w / 2 + 9, y - 8);
+      context.lineTo(x + w / 2, y + 6);
+      context.closePath();
+      context.fill();
     } else if (item.type === 'haybale') {
       context.fillStyle = '#d8b25c';
       roundRect(x, y, w, h, 8);
@@ -733,25 +845,42 @@ export function createRenderer(canvas) {
     roundRect(24, 96, 220 * threat, 14, 7);
     context.fill();
     text('FARMER', 24, 114, 15, flash ? PALETTE.danger : PALETTE.muted, 'left', 'bold');
-    if (state.player.shield) text('🛡 SHIELD', 24, 138, 16, PALETTE.feather, 'left', 'bold');
+    if (state.player.shield) {
+      // Drawn shield icon — the emoji glyph goes tofu on bare systems.
+      context.fillStyle = PALETTE.feather;
+      context.beginPath();
+      context.moveTo(34, 138);
+      context.lineTo(46, 138);
+      context.lineTo(46, 148);
+      context.quadraticCurveTo(46, 158, 40, 162);
+      context.quadraticCurveTo(34, 158, 34, 148);
+      context.closePath();
+      context.fill();
+      text('SHIELD', 54, 138, 16, PALETTE.feather, 'left', 'bold');
+    }
     // Escape progress bar along the bottom.
     const progress = Math.min(1, metres / ESCAPE_METRES);
     context.fillStyle = 'rgba(0,0,0,0.4)';
-    roundRect(200, 692, 880, 10, 5);
+    roundRect(200, 772, 880, 10, 5);
     context.fill();
     context.fillStyle = PALETTE.ok;
-    roundRect(200, 692, 880 * progress, 10, 5);
+    roundRect(200, 772, 880 * progress, 10, 5);
     context.fill();
     for (let s = 1; s < STAGES.length; s += 1) {
       const mx = 200 + 880 * (STAGES[s].fromMetres / ESCAPE_METRES);
       context.fillStyle = PALETTE.text;
-      context.fillRect(mx - 1, 688, 2, 18);
+      context.fillRect(mx - 1, 768, 2, 18);
     }
-    text('ESCAPE', 190, 688, 14, PALETTE.muted, 'right', 'bold');
-    text('FREEDOM', 1090, 688, 14, PALETTE.muted, 'left', 'bold');
+    text('ESCAPE', 190, 768, 14, PALETTE.muted, 'right', 'bold');
+    text('FREEDOM', 1090, 768, 14, PALETTE.muted, 'left', 'bold');
   }
 
-  function drawButton(rect, label, enabled) {
+  /**
+   * A button with an optional vector icon ('play' triangle, 'retry' circular
+   * arrow) drawn in canvas shapes — never a font glyph, so no tofu box can
+   * appear in front of the label on a bare system.
+   */
+  function drawButton(rect, label, enabled, icon) {
     context.fillStyle = enabled ? '#e8722a' : '#6b5a48';
     roundRect(rect.x, rect.y, rect.w, rect.h, 12);
     context.fill();
@@ -759,7 +888,44 @@ export function createRenderer(canvas) {
     context.lineWidth = 3;
     roundRect(rect.x, rect.y, rect.w, rect.h, 12);
     context.stroke();
-    text(label, rect.x + rect.w / 2, rect.y + rect.h / 2 - 13, 28, '#fff6e6', 'center', 'bold');
+    const cy = rect.y + rect.h / 2;
+    if (icon) {
+      context.font = `bold 28px ${FONT}`;
+      const labelWidth = context.measureText(label).width;
+      const ix = rect.x + rect.w / 2 - labelWidth / 2 - 34;
+      context.fillStyle = '#fff6e6';
+      if (icon === 'play') {
+        context.beginPath();
+        context.moveTo(ix - 9, cy - 13);
+        context.lineTo(ix - 9, cy + 13);
+        context.lineTo(ix + 13, cy);
+        context.closePath();
+        context.fill();
+      } else if (icon === 'retry') {
+        context.strokeStyle = '#fff6e6';
+        context.lineWidth = 4;
+        const endA = Math.PI * 1.35;
+        context.beginPath();
+        context.arc(ix, cy, 11, -0.6, endA);
+        context.stroke();
+        const ex = ix + Math.cos(endA) * 11;
+        const ey = cy + Math.sin(endA) * 11;
+        const tx = -Math.sin(endA);
+        const ty = Math.cos(endA);
+        context.beginPath();
+        context.moveTo(ex + tx * 10, ey + ty * 10);
+        context.lineTo(ex - ty * 6, ey + tx * 6);
+        context.lineTo(ex + ty * 6, ey - tx * 6);
+        context.closePath();
+        context.fill();
+      }
+    }
+    // The label is drawn on a middle baseline so it sits truly centred
+    // against the icon; the callers all work on an alphabetic baseline, so
+    // restore it afterwards.
+    context.textBaseline = 'middle';
+    text(label, rect.x + rect.w / 2, cy, 28, '#fff6e6', 'center', 'bold');
+    context.textBaseline = 'alphabetic';
   }
 
   function drawPanel(title, lines, prompt) {
@@ -814,15 +980,15 @@ export function createRenderer(canvas) {
       context.fillStyle = 'rgba(20, 12, 6, 0.45)';
       context.fillRect(0, 0, FIELD.width, FIELD.height);
       context.textBaseline = 'alphabetic';
-      text('FEAST OR FLIGHT', FIELD.width / 2, 150, 72, '#fff6e6', 'center', 'bold');
-      text("A Turkey's Great Escape", FIELD.width / 2, 196, 30, PALETTE.corn, 'center', 'bold');
-      text('Thanksgiving is coming. The farmer wants you on the table.', FIELD.width / 2, 246, 22, PALETTE.text, 'center');
-      text('Run 1500 m from the farmyard, through the barn, out of the kitchen — and win your pardon!', FIELD.width / 2, 278, 22, PALETTE.text, 'center');
-      text('SPACE / ↑  jump (x2)      ↓  slide & hide in haystacks      SHIFT  dash', FIELD.width / 2, 330, 21, PALETTE.muted, 'center');
-      text('← →  speed      P  pause      M  mute      Grab corn to push the farmer back!', FIELD.width / 2, 362, 21, PALETTE.muted, 'center');
-      text(bestLabel(best), FIELD.width / 2, 408, 22, PALETTE.corn, 'center', 'bold');
-      drawButton(BUTTONS.start, '▶  START RUN', true);
-      text('or press SPACE', FIELD.width / 2, 600, 20, PALETTE.muted, 'center');
+      text('FEAST OR FLIGHT', FIELD.width / 2, 190, 72, '#fff6e6', 'center', 'bold');
+      text("A Turkey's Great Escape", FIELD.width / 2, 236, 30, PALETTE.corn, 'center', 'bold');
+      text('Thanksgiving is coming. The farmer wants you on the table.', FIELD.width / 2, 286, 22, PALETTE.text, 'center');
+      text('Run 1500 m from the farmyard, through the barn, out of the kitchen — and win your pardon!', FIELD.width / 2, 318, 22, PALETTE.text, 'center');
+      text('SPACE / UP  jump (x2)      DOWN  slide & hide in haystacks      SHIFT  dash', FIELD.width / 2, 370, 21, PALETTE.muted, 'center');
+      text('LEFT / RIGHT  speed      P  pause      M  mute      Grab corn to push the farmer back!', FIELD.width / 2, 402, 21, PALETTE.muted, 'center');
+      text(bestLabel(best), FIELD.width / 2, 448, 22, PALETTE.corn, 'center', 'bold');
+      drawButton(BUTTONS.start, 'START RUN', true, 'play');
+      text('or press SPACE', FIELD.width / 2, 640, 20, PALETTE.muted, 'center');
       return;
     }
     drawHud(state, best);
@@ -850,8 +1016,8 @@ export function createRenderer(canvas) {
         'You outran the farmer, the oven and the carving knife.',
         'The President pardons you. Happy Thanksgiving!',
       ];
-      drawPanel('🎉  PARDONED!  🎉', lines, '');
-      drawButton(BUTTONS.restart, '↻  RUN AGAIN', true);
+      drawPanel('PARDONED!', lines, '');
+      drawButton(BUTTONS.restart, 'RUN AGAIN', true, 'retry');
       return;
     }
     const lines = [
@@ -863,7 +1029,7 @@ export function createRenderer(canvas) {
       'Corn pushes him back. Haystacks hide you. Try again!',
     ];
     drawPanel('CAUGHT FOR DINNER!', lines, '');
-    drawButton(BUTTONS.restart, '↻  TRY AGAIN', true);
+    drawButton(BUTTONS.restart, 'TRY AGAIN', true, 'retry');
   }
 
   resize();
