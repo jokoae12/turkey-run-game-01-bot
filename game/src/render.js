@@ -64,6 +64,9 @@ export function createRenderer(canvas) {
   const finalBestLabel = cachedLabel('BEST ');
   let lastStage = 0;
   let bannerUntil = 0;
+  let bannerTitle = '';
+  let bannerSub = '';
+  let lastFinale = false;
 
   function resize() {
     const ratio = window.devicePixelRatio || 1;
@@ -478,12 +481,17 @@ export function createRenderer(canvas) {
   /** The farmer, chasing from the left; the closer the threat, the closer he is. */
   function drawFarmer(state) {
     const threat = state.farmer;
+    // During a cut-off he is in front of the turkey, not behind it.
+    if (state.farmerMode === 'warn' || state.farmerMode === 'corner') return;
+    const searching = state.farmerMode === 'search';
     // Clamped to the left edge so the farmer is always drawn whole, never
     // sliced by the frame — at low threat he lurks at the edge, watching.
     const x = Math.max(0, PLAYER.x - 330 + threat * 265);
     const feet = FIELD.groundY;
     const phase = state.time * 16;
-    const legSwing = Math.sin(phase) * 13;
+    // Searching, he stands still and looks left and right for the turkey.
+    const legSwing = searching ? 0 : Math.sin(phase) * 13;
+    const look = searching ? Math.sin(state.time * 5) * 7 : 0;
     // Legs.
     context.strokeStyle = '#2f3a4a';
     context.lineWidth = 7;
@@ -522,27 +530,94 @@ export function createRenderer(canvas) {
       context.lineTo(x + 70 + i * 6, feet - 168);
       context.stroke();
     }
-    // Head, hat, angry face.
+    // Head, hat, angry face — turning left and right while searching.
     context.fillStyle = PALETTE.farmerSkin;
     context.beginPath();
-    context.arc(x + 36, feet - 134, 15, 0, Math.PI * 2);
+    context.arc(x + 36 + look, feet - 134, 15, 0, Math.PI * 2);
     context.fill();
     context.fillStyle = PALETTE.farmerHat;
     context.beginPath();
-    context.arc(x + 36, feet - 140, 15, Math.PI, 0);
+    context.arc(x + 36 + look, feet - 140, 15, Math.PI, 0);
     context.fill();
-    context.fillRect(x + 16, feet - 142, 40, 5);
+    context.fillRect(x + 16 + look, feet - 142, 40, 5);
     context.fillStyle = '#1d1d1d';
-    context.fillRect(x + 42, feet - 140, 4, 3);
+    context.fillRect(x + 42 + look, feet - 140, 4, 3);
     context.strokeStyle = '#1d1d1d';
     context.lineWidth = 2;
     context.beginPath();
-    context.moveTo(x + 40, feet - 144);
-    context.lineTo(x + 48, feet - 141);
+    context.moveTo(x + 40 + look, feet - 144);
+    context.lineTo(x + 48 + look, feet - 141);
     context.stroke();
     if (threat > 0.55) {
       text('!', x + 36, feet - 178, 34, PALETTE.danger, 'center', 'bold');
     }
+    if (searching) {
+      text('?', x + 36, feet - 182, 34, PALETTE.corn, 'center', 'bold');
+    }
+  }
+
+  /** The cut-off: a shouted warning at the right edge, then the farmer
+   *  charging in from the front, bent low so a jump clears him. */
+  function drawCornerFarmer(state) {
+    if (state.farmerMode === 'warn') {
+      const flash = Math.floor(state.time * 6) % 2 === 0;
+      // Warning arrow at the right edge, pointing at the turkey.
+      context.fillStyle = flash ? PALETTE.danger : '#ff8a3c';
+      context.beginPath();
+      context.moveTo(1252, FIELD.groundY - 190);
+      context.lineTo(1192, FIELD.groundY - 160);
+      context.lineTo(1252, FIELD.groundY - 130);
+      context.closePath();
+      context.fill();
+      text('THERE!', 1140, FIELD.groundY - 226, 40, flash ? PALETTE.danger : '#fff6e6', 'center', 'bold');
+      text('JUMP OVER HIM!', 1140, FIELD.groundY - 182, 20, '#fff6e6', 'center', 'bold');
+      return;
+    }
+    if (state.farmerMode !== 'corner') return;
+    const x = state.farmerX;
+    const feet = FIELD.groundY;
+    const phase = state.time * 24;
+    const legSwing = Math.sin(phase) * 16;
+    // Legs, pumping fast.
+    context.strokeStyle = '#2f3a4a';
+    context.lineWidth = 7;
+    context.lineCap = 'round';
+    context.beginPath();
+    context.moveTo(x + 26, feet - 52);
+    context.lineTo(x + 26 + legSwing, feet);
+    context.moveTo(x + 40, feet - 52);
+    context.lineTo(x + 40 - legSwing, feet);
+    context.stroke();
+    // Body leaning into the charge, head low.
+    context.fillStyle = PALETTE.farmerOveralls;
+    context.fillRect(x + 18, feet - 88, 34, 40);
+    context.fillStyle = PALETTE.farmerShirt;
+    context.fillRect(x + 12, feet - 112, 42, 28);
+    context.fillStyle = PALETTE.farmerSkin;
+    context.beginPath();
+    context.arc(x + 30, feet - 122, 14, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = PALETTE.farmerHat;
+    context.beginPath();
+    context.arc(x + 30, feet - 127, 14, Math.PI, 0);
+    context.fill();
+    context.fillRect(x + 12, feet - 129, 36, 5);
+    // Pitchfork held low, pointing forward (to the left, at the turkey).
+    context.strokeStyle = '#8a6a3a';
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(x + 8, feet - 90);
+    context.lineTo(x - 30, feet - 116);
+    context.stroke();
+    context.strokeStyle = '#c9ced6';
+    context.lineWidth = 3;
+    for (let i = -1; i <= 1; i += 1) {
+      context.beginPath();
+      context.moveTo(x - 30 + i * 5, feet - 116);
+      context.lineTo(x - 42 + i * 5, feet - 128);
+      context.stroke();
+    }
+    text('!', x + 32, feet - 152, 32, PALETTE.danger, 'center', 'bold');
   }
 
   function drawHaystack(x, y, w, h) {
@@ -610,6 +685,80 @@ export function createRenderer(canvas) {
       context.fillStyle = '#3f7a2e';
       context.fillRect(-3, -h / 2 - 6, 6, 12);
       context.restore();
+    } else if (item.type === 'roller') {
+      // A pumpkin rolling AT the turkey: same body as a pumpkin, angry eyes,
+      // and speed lines trailing behind it.
+      context.save();
+      context.translate(x + w / 2, y + h / 2);
+      context.rotate(item.spin);
+      context.fillStyle = PALETTE.pumpkin;
+      context.beginPath();
+      context.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = '#b34d12';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.ellipse(0, 0, w / 4, h / 2 - 2, 0, 0, Math.PI * 2);
+      context.stroke();
+      context.fillStyle = '#3f7a2e';
+      context.fillRect(-3, -h / 2 - 6, 6, 12);
+      context.strokeStyle = '#5d2318';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(-14, -6);
+      context.lineTo(-4, -2);
+      context.moveTo(14, -6);
+      context.lineTo(4, -2);
+      context.stroke();
+      context.restore();
+      context.strokeStyle = 'rgba(255, 246, 230, 0.6)';
+      context.lineWidth = 3;
+      for (let i = 0; i < 3; i += 1) {
+        const ly = y + 8 + i * 16;
+        context.beginPath();
+        context.moveTo(x + w + 10, ly);
+        context.lineTo(x + w + 34, ly);
+        context.stroke();
+      }
+    } else if (item.type === 'fallingKnife') {
+      if (item.knifePhase === 'warn') {
+        // The blade peeks from the top; its shadow on the ground says where.
+        context.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        context.beginPath();
+        context.ellipse(x + w / 2, FIELD.groundY + 6, 26 + Math.sin(state.time * 10) * 4, 7, 0, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = PALETTE.knife;
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x + w, 0);
+        context.lineTo(x + w / 2, 64);
+        context.closePath();
+        context.fill();
+        text('!', x + w / 2, FIELD.groundY - 34, 30, PALETTE.danger, 'center', 'bold');
+      } else if (item.knifePhase === 'fall') {
+        context.fillStyle = PALETTE.knife;
+        context.beginPath();
+        context.moveTo(x, y);
+        context.lineTo(x + w, y);
+        context.lineTo(x + w / 2, y + item.h);
+        context.closePath();
+        context.fill();
+        context.fillStyle = 'rgba(255,255,255,0.5)';
+        context.fillRect(x + w / 2 - 2, y + 6, 3, item.h - 14);
+      } else {
+        // Stuck in the ground, tilted, still jumpable.
+        context.save();
+        context.translate(x + w / 2, y + item.h);
+        context.rotate(0.12);
+        context.fillStyle = PALETTE.knife;
+        context.beginPath();
+        context.moveTo(-w / 2, -item.h);
+        context.lineTo(w / 2, -item.h);
+        context.lineTo(0, 0);
+        context.closePath();
+        context.fill();
+        context.restore();
+      }
     } else if (item.type === 'mud') {
       context.fillStyle = '#6b4423';
       context.beginPath();
@@ -953,6 +1102,12 @@ export function createRenderer(canvas) {
     for (const item of state.pickups) if (item.active) drawPickup(item);
     for (const item of state.obstacles) if (item.active) drawObstacle(item, state);
     drawFarmer(state);
+    drawCornerFarmer(state);
+    if (state.foundTimer > 0) {
+      context.globalAlpha = Math.min(1, state.foundTimer * 2);
+      text('FOUND YOU!', FIELD.width / 2, 180, 44, PALETTE.danger, 'center', 'bold');
+      context.globalAlpha = 1;
+    }
     drawTurkey(state);
     for (const p of state.particles) {
       if (!p.active) continue;
@@ -974,6 +1129,15 @@ export function createRenderer(canvas) {
     if (state.stageIndex !== lastStage) {
       lastStage = state.stageIndex;
       bannerUntil = state.time + 1.6;
+      bannerTitle = `STAGE ${state.stageIndex + 1} — ${STAGES[state.stageIndex].name}`;
+      bannerSub = state.stageIndex === 2 ? 'Dodge the oven and the carving knives!' : state.stageIndex === 1 ? 'Mind the pitchforks — and the chickens!' : 'Run, turkey, run!';
+    }
+    if (!state.finale) lastFinale = false;
+    else if (!lastFinale) {
+      lastFinale = true;
+      bannerUntil = state.time + 1.6;
+      bannerTitle = 'FINAL — THE GREAT ESCAPE';
+      bannerSub = 'The farmer is sprinting! Watch the sky!';
     }
     drawField(state);
     if (screen === SCREEN_TITLE) {
@@ -996,8 +1160,15 @@ export function createRenderer(canvas) {
       if (state.time < bannerUntil) {
         const alpha = Math.min(1, (bannerUntil - state.time) * 2);
         context.globalAlpha = alpha;
-        text(STAGES[state.stageIndex].name, FIELD.width / 2, 250, 54, '#fff6e6', 'center', 'bold');
-        text(state.stageIndex === 2 ? 'Dodge the oven and the carving knives!' : state.stageIndex === 1 ? 'Mind the pitchforks — and the chickens!' : 'Run, turkey, run!', FIELD.width / 2, 292, 22, PALETTE.corn, 'center');
+        context.fillStyle = PALETTE.panel;
+        roundRect(FIELD.width / 2 - 330, 190, 660, 116, 16);
+        context.fill();
+        context.strokeStyle = PALETTE.panelEdge;
+        context.lineWidth = 3;
+        roundRect(FIELD.width / 2 - 330, 190, 660, 116, 16);
+        context.stroke();
+        text(bannerTitle, FIELD.width / 2, 224, 44, '#fff6e6', 'center', 'bold');
+        text(bannerSub, FIELD.width / 2, 274, 20, PALETTE.corn, 'center');
         context.globalAlpha = 1;
       }
       return;

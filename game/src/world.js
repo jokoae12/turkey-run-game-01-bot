@@ -7,7 +7,7 @@
 // after createWorld returns.
 
 import {
-  ESCAPE_METRES, FARMER, FIELD, LIVES, OBSTACLES, PARTICLE_POOL, PICKUPS,
+  ESCAPE_METRES, FARMER, FIELD, FINALE_METRES, LIVES, OBSTACLES, PARTICLE_POOL, PICKUPS,
   PLAYER, POOL_SIZE, PX_PER_METRE, RUN, SCORE, STAGES,
 } from './config.js';
 
@@ -21,6 +21,14 @@ export const EVENT_HIDE = 64;
 export const EVENT_JUMP = 128;
 export const EVENT_DOUBLE_JUMP = 256;
 export const EVENT_DASH = 512;
+/** The farmer poked the haystack and found the turkey hiding inside. */
+export const EVENT_FOUND = 1024;
+/** The farmer shouts "THERE!" and runs around to cut the turkey off. */
+export const EVENT_SHOUT = 2048;
+/** A falling knife starts dropping: whistle warning. */
+export const EVENT_KNIFE = 4096;
+/** The last 200 m begin: the farmer sprints and knives rain down. */
+export const EVENT_FINALE = 8192;
 
 function overlaps(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -34,7 +42,7 @@ export function createWorld(random) {
   };
   const obstacles = [];
   for (let i = 0; i < POOL_SIZE; i += 1) {
-    obstacles.push({ active: false, type: 'fence', x: 0, y: 0, w: 0, h: 0, kind: 'jump', passed: false, spin: 0, phase: 0 });
+    obstacles.push({ active: false, type: 'fence', x: 0, y: 0, w: 0, h: 0, kind: 'jump', passed: false, spin: 0, phase: 0, warnT: 0, vy: 0, knifePhase: 'warn' });
   }
   const pickups = [];
   for (let i = 0; i < POOL_SIZE; i += 1) {
@@ -50,6 +58,14 @@ export function createWorld(random) {
     time: 0, spawnTimer: 1.0, cornTimer: 1.2, featherTimer: 30,
     farmer: 0.12, speed: RUN.baseSpeed, inMud: false,
     over: false, won: false, cause: '', runTime: 0,
+    /** Farmer behaviour: chase (default), search (poking a haystack),
+     *  warn (shouting before a cut-off) or corner (charging from the front). */
+    farmerMode: 'chase', farmerTimer: 0, farmerX: 0, farmerDodged: false,
+    cornerDone: [false, false],
+    /** The finale: the last 200 m, farmer sprinting, knives falling. */
+    finale: false, knifeTimer: 2.0, foundTimer: 0,
+    /** What caused the last hit (obstacle type, or 'corner'). */
+    lastHit: '',
   };
 
   function reset() {
@@ -83,6 +99,15 @@ export function createWorld(random) {
     state.won = false;
     state.cause = '';
     state.runTime = 0;
+    state.farmerMode = 'chase';
+    state.farmerTimer = 0;
+    state.farmerX = 0;
+    state.farmerDodged = false;
+    state.cornerDone = [false, false];
+    state.finale = false;
+    state.knifeTimer = 2.0;
+    state.foundTimer = 0;
+    state.lastHit = '';
   }
 
   function meters() {
@@ -143,7 +168,41 @@ export function createWorld(random) {
     item.passed = false;
     item.spin = 0;
     item.phase = random() * Math.PI * 2;
+    item.knifePhase = 'warn';
+    item.warnT = 0;
+    item.vy = 0;
+    if (type === 'fallingKnife') {
+      // It starts above the screen, warning with its shadow, then drops.
+      item.y = -160;
+      item.warnT = 0.8;
+    }
     return item;
+  }
+
+  /**
+   * Resolve a hit on the turkey (obstacle, falling knife or the charging
+   * farmer): a shield absorbs it, otherwise a life goes and the farmer gains.
+   * Returns EVENT_HIT, plus EVENT_OVER when the run ends here.
+   */
+  function takeHit(cause) {
+    let events = EVENT_HIT;
+    state.lastHit = cause;
+    if (player.shield) {
+      player.shield = false;
+      player.invulnerable = PLAYER.invulnerable;
+      burst(PLAYER.x + 30, player.y - 40, '#ffd94a', 12, 200);
+      return events;
+    }
+    state.lives -= 1;
+    player.invulnerable = PLAYER.invulnerable;
+    state.farmer = Math.min(1, state.farmer + FARMER.hitGain);
+    burst(PLAYER.x + 30, player.y - 40, '#ffffff', 16, 260);
+    burst(PLAYER.x + 30, player.y - 40, '#8a5230', 8, 180);
+    if (state.lives <= 0 || state.farmer >= 1) {
+      finish('caught', false);
+      return events | EVENT_OVER;
+    }
+    return events;
   }
 
   function spawnPickupRow() {
@@ -201,16 +260,85 @@ export function createWorld(random) {
     const nextStage = STAGES[state.stageIndex + 1];
     if (nextStage && metres >= nextStage.fromMetres) {
       state.stageIndex = Math.min(STAGES.length - 1, state.stageIndex + 1);
+      // At each stage boundary the farmer cuts the turkey off: a shouted
+      // warning first, then he charges in from the front. Fair because the
+      // warning is long and jumping over him dodges it.
+      const boundary = state.stageIndex - 1;
+      if (!harmless && boundary >= 0 && !state.cornerDone[boundary] && state.farmerMode === 'chase') {
+        state.cornerDone[boundary] = true;
+        state.farmerMode = 'warn';
+        state.farmerTimer = FARMER.cornerWarnSeconds;
+        events |= EVENT_SHOUT;
+      }
+    }
+    // The finale: the last 200 m, the farmer sprints and knives rain down.
+    if (!harmless && !state.finale && metres >= FINALE_METRES) {
+      state.finale = true;
+      events |= EVENT_FINALE;
     }
     state.score = Math.floor(metres) * SCORE.perMetre + state.bonus;
 
+    if (state.foundTimer > 0) state.foundTimer -= dt;
+
     // --- the farmer hunts: slow creep, pushed back by corn, dash and hiding.
-    if (!harmless) {
-      state.farmer = Math.min(1, state.farmer + FARMER.creepPerSecond * dt);
+    // While he searches, warns or charges he is not creeping up from behind.
+    if (!harmless && state.farmerMode === 'chase') {
+      const creep = FARMER.creepPerSecond * (state.finale ? FARMER.finaleCreep : 1);
+      state.farmer = Math.min(1, state.farmer + creep * dt);
       if (player.dashing) state.farmer = Math.max(0, state.farmer - FARMER.dashPushbackPerSecond * dt);
       if (state.farmer >= 1) {
         finish('caught', false);
         return EVENT_OVER;
+      }
+    }
+
+    // --- farmer behaviours: searching a haystack, warning, charging.
+    if (!harmless && state.farmerMode === 'search') {
+      state.farmerTimer -= dt;
+      if (state.farmerTimer <= 0) {
+        if (player.hiding) {
+          // Found! Dragged out of the haystack; he gains a lot of ground.
+          player.hiding = false;
+          state.farmer = Math.min(1, state.farmer + FARMER.foundGain);
+          state.foundTimer = 1.0;
+          events |= EVENT_FOUND;
+          burst(PLAYER.x + 30, FIELD.groundY - 30, '#d8b25c', 14, 160);
+          if (state.farmer >= 1) {
+            finish('caught', false);
+            return events | EVENT_OVER;
+          }
+        } else {
+          // He poked the wrong haystack and lost the trail.
+          state.farmer = Math.max(0, state.farmer - 0.05);
+        }
+        state.farmerMode = 'chase';
+      }
+    } else if (!harmless && state.farmerMode === 'warn') {
+      state.farmerTimer -= dt;
+      if (state.farmerTimer <= 0) {
+        state.farmerMode = 'corner';
+        state.farmerX = FIELD.width + 40;
+        state.farmerDodged = false;
+      }
+    } else if (!harmless && state.farmerMode === 'corner') {
+      state.farmerX -= (speed + FARMER.cornerSpeed) * dt;
+      const chargeBox = { x: state.farmerX, y: FIELD.groundY - FARMER.cornerHeight, w: 64, h: FARMER.cornerHeight };
+      if (!player.hiding && overlaps(playerBox(), chargeBox)) {
+        if (player.y < FIELD.groundY - FARMER.cornerHeight) {
+          // Airborne over him: he runs straight past underneath.
+          state.farmerDodged = true;
+        } else if (player.invulnerable <= 0 && !state.farmerDodged) {
+          events |= takeHit('corner');
+          state.farmerMode = 'chase';
+          if (events & EVENT_OVER) return events;
+        }
+      }
+      if (state.farmerX + 64 < PLAYER.x) {
+        if (state.farmerDodged) {
+          state.bonus += SCORE.cornerDodge;
+          state.farmer = Math.max(0, state.farmer - 0.05);
+        }
+        state.farmerMode = 'chase';
       }
     }
 
@@ -255,13 +383,45 @@ export function createWorld(random) {
 
     if (player.invulnerable > 0) player.invulnerable = Math.max(0, player.invulnerable - dt);
 
-    // --- spawning.
+    // --- spawning. No fresh obstacles while the farmer is cutting the
+    // turkey off, or while a knife is falling: one threat at a time keeps
+    // each dodge readable instead of a pile-up.
     state.spawnTimer -= dt;
     if (state.spawnTimer <= 0) {
-      const pool = [...stageDef.groundTypes, ...stageDef.airTypes];
-      const type = pool[Math.floor(random() * pool.length)];
-      spawnObstacle(type);
-      state.spawnTimer = stageDef.spawnInterval * (0.85 + random() * 0.4);
+      let knifeBusy = false;
+      for (const item of obstacles) {
+        if (item.active && item.type === 'fallingKnife') {
+          knifeBusy = true;
+          break;
+        }
+      }
+      if (state.farmerMode === 'warn' || state.farmerMode === 'corner' || knifeBusy) {
+        state.spawnTimer = 0.3;
+      } else {
+        const pool = [...stageDef.groundTypes, ...stageDef.airTypes];
+        let type = pool[Math.floor(random() * pool.length)];
+        // Rollers close fast, so they stay rare: a picked roller only
+        // actually rolls about 40% of the time, the rest is a normal obstacle.
+        if (type === 'roller' && random() < 0.6) {
+          const rest = pool.filter((t) => t !== 'roller');
+          type = rest[Math.floor(random() * rest.length)];
+        }
+        spawnObstacle(type);
+        state.spawnTimer = stageDef.spawnInterval * (0.85 + random() * 0.4);
+      }
+    }
+    // --- the finale's falling knives: about half are aimed to land on the
+    // turkey, the rest fall ahead at random. The shadow warns where.
+    if (state.finale && !harmless) {
+      state.knifeTimer -= dt;
+      if (state.knifeTimer <= 0) {
+        const aimed = random() < 0.45;
+        const x = aimed
+          ? PLAYER.x + speed * 1.5 + random() * 80
+          : FIELD.width + 60 + random() * 200;
+        spawnObstacle('fallingKnife', x);
+        state.knifeTimer = 1.9 * (0.8 + random() * 0.4);
+      }
     }
     state.cornTimer -= dt;
     if (state.cornTimer <= 0) {
@@ -289,8 +449,35 @@ export function createWorld(random) {
       if (!item.active) continue;
       let drift = speed;
       if (item.type === 'chicken') drift += 130;
-      if (item.type === 'pumpkin') item.spin += (drift / (item.w / 2)) * dt;
+      if (item.type === 'roller') drift += 85;
+      if (item.type === 'pumpkin' || item.type === 'roller') item.spin += (drift / (item.w / 2)) * dt;
       if (item.type === 'knife') item.x += Math.sin(state.time * 2.2 + item.phase) * 40 * dt;
+      if (item.type === 'fallingKnife') {
+        // Warn (shadow on the ground), fall fast, then stick in the ground.
+        if (item.knifePhase === 'warn') {
+          item.warnT -= dt;
+          if (item.warnT <= 0) {
+            item.knifePhase = 'fall';
+            item.vy = 0;
+            events |= EVENT_KNIFE;
+          }
+        } else if (item.knifePhase === 'fall') {
+          item.vy += 3000 * dt;
+          item.y += item.vy * dt;
+          if (item.y >= FIELD.groundY - 46) {
+            item.y = FIELD.groundY - 46;
+            item.h = 46;
+            item.knifePhase = 'stuck';
+            item.warnT = 1.2;
+          }
+        } else {
+          item.warnT -= dt;
+          if (item.warnT <= 0) {
+            item.active = false;
+            continue;
+          }
+        }
+      }
       item.x -= drift * dt;
       if (item.x + item.w < -80) {
         item.active = false;
@@ -315,31 +502,23 @@ export function createWorld(random) {
         item.active = false;
         player.hiding = true;
         player.hideTimer = PLAYER.hideSeconds;
+        const threatBefore = state.farmer;
         state.farmer = Math.max(0.1, state.farmer - FARMER.hideDrop);
         state.bonus += SCORE.hideBonus;
         events |= EVENT_HIDE;
         burst(PLAYER.x + 30, FIELD.groundY - 30, '#d8b25c', 14, 160);
+        // If he was close, he saw where the turkey went: he stops, looks
+        // around, then pokes the haystack. Hiding while he is far stays safe.
+        if (!harmless && state.farmerMode === 'chase' && threatBefore >= FARMER.searchFindAt) {
+          state.farmerMode = 'search';
+          state.farmerTimer = FARMER.searchSeconds;
+        }
         continue;
       }
       if (player.invulnerable > 0) continue;
       item.active = false;
-      if (player.shield) {
-        player.shield = false;
-        player.invulnerable = PLAYER.invulnerable;
-        events |= EVENT_HIT;
-        burst(PLAYER.x + 30, player.y - 40, '#ffd94a', 12, 200);
-        continue;
-      }
-      state.lives -= 1;
-      player.invulnerable = PLAYER.invulnerable;
-      state.farmer = Math.min(1, state.farmer + FARMER.hitGain);
-      events |= EVENT_HIT;
-      burst(PLAYER.x + 30, player.y - 40, '#ffffff', 16, 260);
-      burst(PLAYER.x + 30, player.y - 40, '#8a5230', 8, 180);
-      if (state.lives <= 0 || state.farmer >= 1) {
-        finish('caught', false);
-        return events | EVENT_OVER;
-      }
+      events |= takeHit(item.type);
+      if (events & EVENT_OVER) return events;
     }
 
     // --- pickups.
