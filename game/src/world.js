@@ -7,7 +7,7 @@
 // after createWorld returns.
 
 import {
-  ESCAPE_METRES, FARMER, FIELD, FINALE_METRES, LIVES, OBSTACLES, PARTICLE_POOL, PICKUPS,
+  COMBO, ESCAPE_METRES, FARMER, FIELD, FINALE_METRES, LIVES, OBSTACLES, PARTICLE_POOL, PICKUPS,
   PLAYER, POOL_SIZE, PX_PER_METRE, RUN, SCORE, STAGES,
 } from './config.js';
 
@@ -29,6 +29,8 @@ export const EVENT_SHOUT = 2048;
 export const EVENT_KNIFE = 4096;
 /** The last 200 m begin: the farmer sprints and knives rain down. */
 export const EVENT_FINALE = 8192;
+/** The corn combo just stepped up a multiplier (x2, then x3): chime. */
+export const EVENT_COMBO_UP = 16384;
 
 function overlaps(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -50,7 +52,7 @@ export function createWorld(random) {
   }
   const particles = [];
   for (let i = 0; i < PARTICLE_POOL; i += 1) {
-    particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, color: '#ffffff', size: 3 });
+    particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, color: '#ffffff', size: 3, shape: 'circle', rot: 0 });
   }
   const state = {
     player, obstacles, pickups, particles,
@@ -66,6 +68,13 @@ export function createWorld(random) {
     finale: false, knifeTimer: 2.0, foundTimer: 0,
     /** What caused the last hit (obstacle type, or 'corner'). */
     lastHit: '',
+    /** Corn combo: consecutive corn without losing a life, and its score
+     *  multiplier (1, 2 or 3). Scoring only — never a difficulty knob. */
+    comboStreak: 0,
+    comboMult: 1,
+    /** Hit flash (red wash) and near-miss shake, in seconds left. */
+    flashTimer: 0,
+    shakeTimer: 0,
   };
 
   function reset() {
@@ -108,6 +117,10 @@ export function createWorld(random) {
     state.knifeTimer = 2.0;
     state.foundTimer = 0;
     state.lastHit = '';
+    state.comboStreak = 0;
+    state.comboMult = 1;
+    state.flashTimer = 0;
+    state.shakeTimer = 0;
   }
 
   function meters() {
@@ -133,7 +146,7 @@ export function createWorld(random) {
     return null;
   }
 
-  function burst(x, y, color, count, power) {
+  function burst(x, y, color, count, power, shape) {
     for (let i = 0; i < count; i += 1) {
       const p = freeParticle();
       if (!p) return;
@@ -146,6 +159,37 @@ export function createWorld(random) {
       p.maxLife = p.life;
       p.color = color;
       p.size = 3 + random() * 4;
+      p.shape = shape ?? 'circle';
+      // Spin comes from the cosmetic stream, never the spawn stream.
+      p.rot = fxRandom() * Math.PI * 2;
+    }
+  }
+
+  /**
+   * Cosmetic-only randomness (landing dust): its own LCG stream, so new
+   * particles never steal draws from the spawn stream — v3's difficulty
+   * stays bit-identical, seed for seed.
+   */
+  let fxSeed = 987654321;
+  function fxRandom() {
+    fxSeed = (fxSeed * 1664525 + 1013904223) >>> 0;
+    return fxSeed / 4294967296;
+  }
+  function burstFx(x, y, color, count, power) {
+    for (let i = 0; i < count; i += 1) {
+      const p = freeParticle();
+      if (!p) return;
+      p.active = true;
+      p.x = x;
+      p.y = y;
+      p.vx = (fxRandom() - 0.5) * power;
+      p.vy = -fxRandom() * power * 0.8;
+      p.life = 0.5 + fxRandom() * 0.5;
+      p.maxLife = p.life;
+      p.color = color;
+      p.size = 3 + fxRandom() * 4;
+      p.shape = 'circle';
+      p.rot = fxRandom() * Math.PI * 2;
     }
   }
 
@@ -187,6 +231,10 @@ export function createWorld(random) {
   function takeHit(cause) {
     let events = EVENT_HIT;
     state.lastHit = cause;
+    // A hit flashes the screen and breaks the corn combo.
+    state.flashTimer = 0.18;
+    state.comboStreak = 0;
+    state.comboMult = 1;
     if (player.shield) {
       player.shield = false;
       player.invulnerable = PLAYER.invulnerable;
@@ -196,8 +244,10 @@ export function createWorld(random) {
     state.lives -= 1;
     player.invulnerable = PLAYER.invulnerable;
     state.farmer = Math.min(1, state.farmer + FARMER.hitGain);
-    burst(PLAYER.x + 30, player.y - 40, '#ffffff', 16, 260);
-    burst(PLAYER.x + 30, player.y - 40, '#8a5230', 8, 180);
+    // Feathers fly: the same two bursts (and draws) as v3, now drawn as
+    // little spinning ovals instead of circles.
+    burst(PLAYER.x + 30, player.y - 40, '#ffffff', 16, 260, 'feather');
+    burst(PLAYER.x + 30, player.y - 40, '#8a5230', 8, 180, 'feather');
     if (state.lives <= 0 || state.farmer >= 1) {
       finish('caught', false);
       return events | EVENT_OVER;
@@ -252,6 +302,8 @@ export function createWorld(random) {
     let events = 0;
     state.time += dt;
     state.runTime += dt;
+    if (state.flashTimer > 0) state.flashTimer = Math.max(0, state.flashTimer - dt);
+    if (state.shakeTimer > 0) state.shakeTimer = Math.max(0, state.shakeTimer - dt);
     const stageDef = stage();
     const speed = currentSpeed(control);
     state.speed = speed;
@@ -338,6 +390,9 @@ export function createWorld(random) {
           state.bonus += SCORE.cornerDodge;
           state.farmer = Math.max(0, state.farmer - 0.05);
         }
+        // He charged straight past the turkey: a near miss, survived —
+        // whether jumped over or slipped past — shakes the screen.
+        state.shakeTimer = 0.35;
         state.farmerMode = 'chase';
       }
     }
@@ -365,11 +420,16 @@ export function createWorld(random) {
     }
     player.vy += PLAYER.gravity * dt;
     player.y += player.vy * dt;
+    const wasAirborne = !player.onGround;
+    const fallSpeed = player.vy;
     if (player.y >= FIELD.groundY) {
       player.y = FIELD.groundY;
       player.vy = 0;
       player.onGround = true;
       player.jumpsUsed = 0;
+      // A hard landing kicks up dust (own random stream: the spawn
+      // stream is untouched, so the difficulty stays v3's).
+      if (wasAirborne && fallSpeed > 600) burstFx(PLAYER.x + 30, FIELD.groundY - 4, '#c98f4e', 8, 130);
     }
 
     // --- sliding, and hiding inside a haystack.
@@ -535,8 +595,19 @@ export function createWorld(random) {
       if (!overlaps(box, pickupBox)) continue;
       item.active = false;
       if (item.type === 'corn') {
-        state.bonus += PICKUPS.corn.points;
+        // Corn builds the combo: 5 in a row lifts the score to x2, 12 to
+        // x3. Only corn counts, and any lost life breaks the streak.
+        state.comboStreak += 1;
+        const mult = state.comboStreak >= COMBO.streak3 ? 3 : state.comboStreak >= COMBO.streak2 ? 2 : 1;
+        if (mult > state.comboMult) {
+          state.comboMult = mult;
+          events |= EVENT_COMBO_UP;
+        }
+        state.bonus += PICKUPS.corn.points * state.comboMult;
+        const farmerBefore = state.farmer;
         state.farmer = Math.max(0, state.farmer - FARMER.cornPushback);
+        // Corn that shoves a nearly-catching farmer back is a near miss.
+        if (farmerBefore >= 0.92) state.shakeTimer = 0.3;
         events |= EVENT_CORN;
         burst(item.x, item.y, '#f2c94c', 8, 140);
       } else if (item.type === 'feather') {
@@ -553,7 +624,24 @@ export function createWorld(random) {
       }
     }
 
-    // --- running dust, and particles.
+    // --- running dust, dash trail, and particles.
+    if (player.dashing && !player.hiding) {
+      // A golden trail behind the turkey while it dashes.
+      const p = freeParticle();
+      if (p) {
+        p.active = true;
+        p.x = PLAYER.x + 6;
+        p.y = player.y - 30;
+        p.vx = -speed * 0.4;
+        p.vy = 0;
+        p.life = 0.35;
+        p.maxLife = 0.35;
+        p.color = '#ffd94a';
+        p.size = 4;
+        p.shape = 'circle';
+        p.rot = 0;
+      }
+    }
     if (player.onGround && !player.hiding && random() < 0.3) {
       const p = freeParticle();
       if (p) {
@@ -599,6 +687,18 @@ export function createWorld(random) {
         state.lives = 0;
         finish('caught', false);
       }
+    },
+    /** Force a pardoned ending at the finish line, keeping the run's own
+     *  bonus: used by the end screenshot, so it shows a real win frame —
+     *  even when this seed's pilot was caught on the way there. */
+    forceWin() {
+      if (state.won) return;
+      state.over = false;
+      state.distance = ESCAPE_METRES * PX_PER_METRE;
+      state.stageIndex = STAGES.length - 1;
+      state.score = ESCAPE_METRES * SCORE.perMetre + state.bonus;
+      state.lives = Math.max(state.lives, 1);
+      finish('pardon', true);
     },
   };
 }

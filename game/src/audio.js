@@ -173,17 +173,23 @@ export function createAudio() {
       const now = audio.currentTime;
       [392, 523, 784].forEach((freq, i) => tone(freq, 0.16, 'triangle', 0.14, now + i * 0.11));
     },
+    /** The corn combo stepped up: two rising notes. */
+    comboUp() {
+      tone(1046, 0.09, 'triangle', 0.14);
+      tone(1568, 0.16, 'triangle', 0.14, undefined, undefined);
+    },
     caught() {
       tone(392, 0.22, 'sawtooth', 0.16, undefined, 370);
       tone(311, 0.22, 'sawtooth', 0.16);
       tone(233, 0.5, 'sawtooth', 0.18);
     },
     fanfare() {
-      const notes = [523, 659, 784, 1046, 784, 1046];
+      // The pardon jingle: a bright run up, then a held high note.
+      const notes = [523, 659, 784, 1046, 880, 1046, 1318, 1568];
       const audio = ensure();
       if (!audio || muted) return;
       const now = audio.currentTime;
-      notes.forEach((freq, i) => tone(freq, 0.22, 'triangle', 0.16, now + i * 0.13));
+      notes.forEach((freq, i) => tone(freq, i === notes.length - 1 ? 0.5 : 0.2, 'triangle', 0.16, now + i * 0.12));
     },
   };
 }
