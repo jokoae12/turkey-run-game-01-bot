@@ -970,6 +970,10 @@ export function createRenderer(canvas) {
     const metres = Math.floor(state.distance / PX_PER_METRE);
     context.textBaseline = 'top';
     text(scoreLabel(state.score), 24, 18, 30, PALETTE.text, 'left', 'bold');
+    if (state.comboMult > 1) {
+      // The corn combo, gold and loud while it lasts.
+      text(`COMBO x${state.comboMult}`, 214, 20, 22, '#ffd94a', 'left', 'bold');
+    }
     text(distanceLabel(metres) + ' m', 24, 54, 22, PALETTE.muted, 'left');
     text(STAGES[state.stageIndex].name, FIELD.width / 2, 18, 26, PALETTE.text, 'center', 'bold');
     text(`${metres} / ${ESCAPE_METRES} m to freedom`, FIELD.width / 2, 50, 18, PALETTE.muted, 'center');
@@ -1113,9 +1117,20 @@ export function createRenderer(canvas) {
       if (!p.active) continue;
       context.globalAlpha = Math.max(0, p.life / p.maxLife);
       context.fillStyle = p.color;
-      context.beginPath();
-      context.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      context.fill();
+      if (p.shape === 'feather') {
+        // A little oval, spinning as it falls — a lost tail feather.
+        context.save();
+        context.translate(p.x, p.y);
+        context.rotate(p.rot);
+        context.beginPath();
+        context.ellipse(0, 0, p.size, p.size * 0.45, 0, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+      } else {
+        context.beginPath();
+        context.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        context.fill();
+      }
     }
     context.globalAlpha = 1;
   }
@@ -1125,7 +1140,11 @@ export function createRenderer(canvas) {
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.fillStyle = PALETTE.backdrop;
     context.fillRect(0, 0, canvas.width, canvas.height);
-    context.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
+    // A near miss shakes the whole playfield for a beat.
+    const shake = state.shakeTimer > 0 ? state.shakeTimer / 0.35 : 0;
+    const shakeX = shake > 0 ? Math.sin(state.time * 90) * 5 * shake : 0;
+    const shakeY = shake > 0 ? Math.cos(state.time * 78) * 4 * shake : 0;
+    context.setTransform(view.scale, 0, 0, view.scale, view.x + shakeX * view.scale, view.y + shakeY * view.scale);
     if (state.stageIndex !== lastStage) {
       lastStage = state.stageIndex;
       bannerUntil = state.time + 1.6;
@@ -1140,6 +1159,11 @@ export function createRenderer(canvas) {
       bannerSub = 'The farmer is sprinting! Watch the sky!';
     }
     drawField(state);
+    if (state.flashTimer > 0) {
+      // A hit washes the field red for a blink.
+      context.fillStyle = `rgba(255, 60, 40, ${0.28 * (state.flashTimer / 0.18)})`;
+      context.fillRect(0, 0, FIELD.width, FIELD.height);
+    }
     if (screen === SCREEN_TITLE) {
       context.fillStyle = 'rgba(20, 12, 6, 0.45)';
       context.fillRect(0, 0, FIELD.width, FIELD.height);
@@ -1179,6 +1203,21 @@ export function createRenderer(canvas) {
       return;
     }
     if (screen === SCREEN_WIN) {
+      // Confetti rains over the pardon, and the escape itself gets a banner.
+      // The pieces sit on the run's clock, so a still of the win is the
+      // same frame every time — the world stops stepping on this screen.
+      const confetti = ['#ff5a3c', '#ffd94a', '#8fd14f', '#3e6fb0', '#e8a33c', '#ff8ab0'];
+      for (let i = 0; i < 70; i += 1) {
+        const cx = hash(i + 3) * FIELD.width;
+        const cy = (hash(i + 57) * FIELD.height + state.time * 150) % FIELD.height;
+        context.save();
+        context.translate(cx, cy);
+        context.rotate(hash(i + 11) * Math.PI * 2);
+        context.fillStyle = confetti[i % confetti.length];
+        context.fillRect(-5, -3, 10, 6);
+        context.restore();
+      }
+      text('YOU ESCAPED!', FIELD.width / 2, 138, 54, '#ffd94a', 'center', 'bold');
       const lines = [
         finalScoreLabel(state.score),
         finalDistanceLabel(Math.floor(state.distance / PX_PER_METRE)) + ' m',

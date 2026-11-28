@@ -131,6 +131,15 @@ export const SCORE = {
   cornerDodge: 15,
 };
 
+/** Corn combo: consecutive corn picked up without losing a life. The
+ *  multiplier only changes the score — it never touches spawns, speed or
+ *  threat, so the difficulty of v3 is exactly preserved. */
+export const COMBO = {
+  /** Corn streak that lifts the multiplier to x2, then to x3. */
+  streak2: 5,
+  streak3: 12,
+};
+
 /** How many obstacles, pickups and particles can exist at once; pools are allocated once, at boot. */
 export const POOL_SIZE = 48;
 export const PARTICLE_POOL = 90;

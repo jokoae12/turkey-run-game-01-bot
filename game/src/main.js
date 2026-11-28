@@ -10,7 +10,7 @@ import { BEST_KEY, LIVES, STEP } from './config.js';
 import { createRandom } from './random.js';
 import { createAudio } from './audio.js';
 import {
-  createWorld, EVENT_CORN, EVENT_DASH, EVENT_DOUBLE_JUMP, EVENT_FEATHER,
+  createWorld, EVENT_COMBO_UP, EVENT_CORN, EVENT_DASH, EVENT_DOUBLE_JUMP, EVENT_FEATHER,
   EVENT_FINALE, EVENT_FOUND, EVENT_HIDE, EVENT_HIT, EVENT_JUMP, EVENT_KNIFE,
   EVENT_OVER, EVENT_PIE, EVENT_SHOUT, EVENT_WIN,
 } from './world.js';
@@ -115,6 +115,7 @@ function runGame() {
     if (events & EVENT_JUMP) audio.jump();
     if (events & EVENT_DOUBLE_JUMP) audio.doubleJump();
     if (events & EVENT_CORN) audio.pickup();
+    if (events & EVENT_COMBO_UP) audio.comboUp();
     if (events & EVENT_FEATHER) audio.feather();
     if (events & EVENT_PIE) audio.pickup();
     if (events & EVENT_HIDE) audio.hide();

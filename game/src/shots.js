@@ -120,9 +120,13 @@ export function stageShot(name, world) {
     return { screen: SCREEN_TITLE, best: 0 };
   }
   if (name === 'end') {
-    runAutopilot(world, END_LIMIT_SECONDS, true);
-    if (!world.state.over) world.forceCaught();
-    return { screen: SCREEN_OVER, best: world.state.score };
+    // The win frame: play well all the way to the pardon. If this seed's
+    // pilot gets caught instead, the run is still a real one — finish it at
+    // the line, keeping its own bonus, the way the old end shot forced a
+    // catch when the pilot survived too long.
+    runAutopilot(world, END_LIMIT_SECONDS, false);
+    if (!world.state.won) world.forceWin();
+    return { screen: SCREEN_WIN, best: world.state.score };
   }
   if (name === 'kitchen') {
     // Play well until the kitchen, then a little further in.
